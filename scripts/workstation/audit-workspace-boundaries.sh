@@ -25,7 +25,8 @@ fi
 FAILED=0
 
 # Safely read line-by-line, preserving spaces in file paths
-while read -r FILE; do
+# Safely processes the last line even if it lacks a trailing newline
+while read -r FILE || [ -n "$FILE" ]; do
     [ -z "$FILE" ] && continue
 
     # Rule 2: Enforce K8s subfolder encapsulation (ADR 002)

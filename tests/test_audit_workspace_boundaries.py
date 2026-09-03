@@ -1,4 +1,4 @@
-# tests/test_pre_commit_boundaries.py
+# tests/test_audit_workspace_boundaries.py
 import os
 import shutil
 import subprocess

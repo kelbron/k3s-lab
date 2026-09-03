@@ -9,31 +9,25 @@ class TestAuditRepoSecrets(unittest.TestCase):
     def setUp(self):
         # Create an isolated temporary directory mimicking the Git repository
         self.repo_root = Path(tempfile.mkdtemp(prefix="secrets-audit-test-"))
-        
+
         # Point to the actual workstation audit script under test (tests/../scripts/workstation/audit-repo-secrets.sh)
         self.script_src = Path(__file__).resolve().parent.parent / "scripts" / "workstation" / "audit-repo-secrets.sh"
-        
-        # Fallback for sandbox validation environments
-        if not self.script_src.exists():
-            sandbox_v4 = Path("/workspace/artifacts/audit-repo-secrets-v4.sh")
-            if sandbox_v4.exists():
-                self.script_src = sandbox_v4
-            
+
         self.script_dst = self.repo_root / "scripts" / "workstation" / "audit-repo-secrets.sh"
         self.script_dst.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Copy the script to the isolated temporary repository
         shutil.copy2(self.script_src, self.script_dst)
         self.script_dst.chmod(0o755)
-        
+
         # Initialize Git in our temporary test directory
         subprocess.run(["git", "init", "-b", "main"], cwd=self.repo_root, check=True, stdout=subprocess.DEVNULL)
         subprocess.run(["git", "config", "user.name", "Test User"], cwd=self.repo_root, check=True)
         subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=self.repo_root, check=True)
-        
+
         # Create .gitattributes to satisfy the line normalization check by default
         self.write_file(".gitattributes", "* text=auto eol=lf\n", stage=True)
-        
+
         # Commit a baseline dummy file to establish HEAD state
         self.write_file("dummy.txt", "baseline state\n", stage=True)
         subprocess.run(["git", "commit", "-m", "chore: initial commit"], cwd=self.repo_root, check=True, stdout=subprocess.DEVNULL)
@@ -68,7 +62,7 @@ class TestAuditRepoSecrets(unittest.TestCase):
     def test_actively_tracked_sensitive_file_fails_audit(self):
         # Stage and track a sensitive file (.env)
         self.write_file("configs/prod.env", "API_KEY=sensitive-production-token-12345\n", stage=True)
-        
+
         result = self.run_audit()
         self.assertEqual(result.returncode, 1)
         self.assertIn("CRITICAL WARNING: Git is actively tracking sensitive files!", result.stdout)
@@ -77,7 +71,7 @@ class TestAuditRepoSecrets(unittest.TestCase):
     def test_unignored_sensitive_file_on_disk_fails_audit(self):
         # Create a sensitive file on disk (.tfvars), but do NOT list it in .gitignore
         self.write_file("infrastructure/secret.tfvars", "db_password = \"secure_pass\"\n", stage=False)
-        
+
         result = self.run_audit()
         self.assertEqual(result.returncode, 1)
         self.assertIn("WARNING: Found existing secret files NOT covered by .gitignore:", result.stdout)
@@ -88,7 +82,7 @@ class TestAuditRepoSecrets(unittest.TestCase):
         self.write_file(".gitignore", "*.env\n", stage=True)
         # Create a sensitive .env file on disk (not staged/tracked)
         self.write_file("local.env", "DB_CONN=localhost\n", stage=False)
-        
+
         result = self.run_audit()
         self.assertEqual(result.returncode, 0)
         self.assertIn("Safe! All existing local secret files", result.stdout)
@@ -101,7 +95,7 @@ class TestAuditRepoSecrets(unittest.TestCase):
             "api_token=\"pat-a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6\"\n"
         )
         self.write_file("scripts/worker.sh", suspicious_code, stage=True)
-        
+
         result = self.run_audit()
         # Advisory checks do not cause hard failure of the script, so exit code must remain 0
         self.assertEqual(result.returncode, 0)
@@ -114,7 +108,7 @@ class TestAuditRepoSecrets(unittest.TestCase):
         if gitattributes_path.exists():
             subprocess.run(["git", "rm", ".gitattributes"], cwd=self.repo_root, check=True, stdout=subprocess.DEVNULL)
             subprocess.run(["git", "commit", "-m", "chore: remove gitattributes"], cwd=self.repo_root, check=True, stdout=subprocess.DEVNULL)
-            
+
         result = self.run_audit()
         self.assertEqual(result.returncode, 0)
         self.assertIn("Missing .gitattributes! Highly recommended", result.stdout)

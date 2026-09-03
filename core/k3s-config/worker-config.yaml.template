@@ -2,7 +2,7 @@
 server: "https://${CONTROL_PLANE_IP}:6443"
 token: "${K3S_TOKEN}"
 node-ip: "${WORKER_IP}"
-flannel-iface: "enp0s31f6"
+flannel-iface: "${INTERFACE}"
 node-label:
   - "node-type=worker"
   - "workload-type=compute"

@@ -5,62 +5,44 @@ import tempfile
 import unittest
 from builtins import FileNotFoundError
 from pathlib import Path
+from tests.support.support import enforce_test_toolchain
 
 class TestMakefileAudit(unittest.TestCase):
 
+    HARD_REQUIREMENTS = ["make"]
+
     @classmethod
     def setUpClass(cls):
-        # Read the standard CI environment toggle
-        is_ci = os.environ.get("CI", "false").lower() == "true"
-        make_installed = shutil.which("make") is not None
-
-        if not make_installed:
-            if is_ci:
-                # 🛑 Hard Fail in CI: Prevent silent test suppression
-                raise RuntimeError(
-                    "❌ ERROR: 'make' utility is missing in the CI runner environment! "
-                    "Makefile unit tests cannot be verified and must not be skipped."
-                )
-            else:
-                # 🟡 Graceful Skip on local workstations
-                raise unittest.SkipTest(
-                    "⚠️  Skipping Makefile tests: 'make' utility not found on this workstation."
-                )
+        enforce_test_toolchain(cls.HARD_REQUIREMENTS)
 
 
     def setUp(self):
         # 1. Create a temporary directory for isolated testing
         self.test_dir = Path(tempfile.mkdtemp(prefix="makefile-audit-test-"))
-        
+
         # 2. Locate the Makefile in the repository root
         current_file = Path(__file__).resolve()
-        
+
         self.makefile_src = None
         for parent in current_file.parents:
             candidate = parent / "Makefile"
             if candidate.exists():
                 self.makefile_src = candidate
                 break
-                
-        # Fallback for the sandbox environment to locate our synced artifact
-        if not self.makefile_src:
-            sandbox_candidate = Path("/workspace/artifacts/Makefile")
-            if sandbox_candidate.exists():
-                self.makefile_src = sandbox_candidate
 
         if not self.makefile_src:
             raise FileNotFoundError("Could not locate the project Makefile to test.")
-            
+
         # Copy the actual Makefile to our temporary directory
         shutil.copy2(self.makefile_src, self.test_dir / "Makefile")
-        
+
     def tearDown(self):
         shutil.rmtree(self.test_dir)
 
     def write_test_makefile(self, required_tools="", optional_tools=""):
         test_makefile_content = f"""
 # Disable profile evaluations during unit testing
-USE_PROFILES := false        
+USE_PROFILES := false
 include Makefile
 
 # Override variables for testing
@@ -93,7 +75,7 @@ test-audit-fail-optional:
             text=True
         )
         self.assertEqual(result.returncode, 0)
-        
+
     def test_require_tools_failure(self):
         self.write_test_makefile()
         result = subprocess.run(

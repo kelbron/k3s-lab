@@ -1,4 +1,4 @@
-# Auto-detect text files and normalize them to LF line endings on check-in
+# Force Git to normalize all text files to LF on commit
 * text=auto eol=lf
 
 # Explicitly enforce LF for script and configuration assets

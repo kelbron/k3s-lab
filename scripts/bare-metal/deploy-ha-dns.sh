@@ -5,9 +5,11 @@ set -euo pipefail
 declare -a WORKSTATION_TEMP_FILES=()
 
 cleanup_temp_files() {
-    # Ensure standard error is ignored silently if files were already removed
-    rm -f "${WORKSTATION_TEMP_FILES[@]}" 2>/dev/null || true
+    if [ "${#WORKSTATION_TEMP_FILES[@]}" -gt 0 ]; then
+        rm -f "${WORKSTATION_TEMP_FILES[@]}"
+    fi
 }
+
 # Trap both standard exits and unexpected signal abortions
 trap cleanup_temp_files EXIT
 trap 'exit 1' INT TERM HUP

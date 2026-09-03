@@ -19,7 +19,7 @@ secrets/
 # Local .terraform directories
 .terraform/
 
-# .tfstate files (Contains plain-text secrets - DO NOT COMMIT)
+# .tfstate files
 *.tfstate
 *.tfstate.*
 
@@ -31,17 +31,18 @@ crash.*.log
 *.tfvars
 *.tfvars.json
 
-# Ignore override files as they are usually used to override resources locally
+# Ignore override files
 override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
 
-# Ignore transient lock info files created by terraform apply
+# Ignore transient lock info files
 .terraform.tfstate.lock.info
 
-# Include tfplan files to ignore the plan output
+# Ignore plan files
 *tfplan*
+planout
 
 # Ignore CLI configuration files
 .terraformrc
@@ -54,11 +55,21 @@ terraform.rc
 # Built Visual Studio Code Extensions
 *.vsix
 
-# Python compilation and test cache
+# Python build and package artifacts
+*.egg-info/
+*.egg
+build/
+dist/
+wheels/
+*.whl
+
+# Python caches and virtual environments
+.venv/
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 .pytest_cache/
+.coverage
+htmlcov/
 
 # workstation setup sentinel file
 .setup_done
@@ -71,3 +82,9 @@ docs/planning/active-codebase.md
 
 # temp folder for local testing manifests
 manifests/base/temp/
+
+# local folder that we do not want to be under vc
+.local/
+
+# BATS runtime
+.bats/
