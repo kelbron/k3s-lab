@@ -1,18 +1,20 @@
-import unittest
-import tempfile
 import os
-import sys
+import tempfile
+import unittest
 
 from scripts.workstation.filter_manifest import filter_manifest
 
-class TestFilterManifestHardened(unittest.TestCase):
+
+class TestFilterManifest(unittest.TestCase):
     def setUp(self):
-        # Use NamedTemporaryFile purely as secure path name generators
-        self.input_temp = tempfile.NamedTemporaryFile(delete=False)
-        self.output_temp = tempfile.NamedTemporaryFile(delete=False)
+        # We explicitly use noqa: SIM115 here to disable Ruff's check for naked NamedTemporaryFiles.
+        # We handle the full cleanup lifecycle (closing and unlinking) safely in tearDown().
+        self.input_temp = tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".yaml")  # noqa: SIM115
+        self.output_temp = tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".yaml")  # noqa: SIM115
+
         self.input_temp.close()
         self.output_temp.close()
-        
+
         self.input_path = self.input_temp.name
         self.output_path = self.output_temp.name
 

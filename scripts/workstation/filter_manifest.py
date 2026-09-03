@@ -3,8 +3,9 @@
 Utility script to filter out custom resources from a compiled Kustomize stream.
 This facilitates safe multi-phase bootstraps without triggering premature custom API validations.
 """
-import sys
 import os
+import sys
+
 
 def filter_manifest(input_path, output_path):
     """
@@ -32,18 +33,18 @@ def filter_manifest(input_path, output_path):
         for line in lines:
             # Clean carriage returns
             line_clean = line.rstrip('\r')
-            
+
             # Top-level keys must start with 'kind:' at column 0 (no indentation)
             if line_clean.startswith('kind:'):
                 # Separate the value and strip away inline comments
                 parts = line_clean.split(':', 1)
                 kind_value = parts[1].split('#')[0].strip()
-                
+
                 # Exact match against targeted custom kinds
                 if kind_value in ('Application', 'AppProject'):
                     is_custom_workload = True
                     break
-                
+
         if not is_custom_workload:
             filtered_docs.append(f"---\n{doc_strip}")
 
@@ -56,5 +57,5 @@ if __name__ == "__main__":
         script_name = os.path.basename(sys.argv[0])
         print(f"Usage: {script_name} <input_file> <output_file>", file=sys.stderr)
         sys.exit(1)
-    
+
     filter_manifest(sys.argv[1], sys.argv[2])

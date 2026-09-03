@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from typing import ClassVar
 
-from tests.support import enforce_test_toolchain, require_binaries
+from tests.support.support import enforce_test_toolchain, require_binaries
 
 
 class TestMakefileK3s(unittest.TestCase):
@@ -37,7 +37,7 @@ class TestMakefileK3s(unittest.TestCase):
             if k3s_mk_cand.exists() and not self.k3s_mk_src:
                 self.k3s_mk_src = k3s_mk_cand
 
-        if not self.makefile_src.exists() or not self.k3s_mk_src.exists():
+        if self.makefile_src is None or self.k3s_mk_src is None or not self.makefile_src.exists() or not self.k3s_mk_src.exists():
             raise FileNotFoundError("Could not locate parent Makefile or k3s.mk extension.")
 
         # 3. Copy Makefile and k3s.mk to the temp directory
@@ -153,7 +153,7 @@ class TestMakefileK3s(unittest.TestCase):
         self.assertEqual(result.returncode, 0, f"Clean target failed: {result.stderr}")
 
         # Ensure parent-level clean logged success
-        self.assertIn("Wiping workspace build artifacts and secure caches...", result.stdout)
+        self.assertIn("Wiping workspace build artifacts and secure caches", result.stdout)
 
         # Verify files are deleted physically
         self.assertFalse(stage_file.exists(), "K3s build stage file was not deleted!")
@@ -217,7 +217,7 @@ class TestMakefileK3s(unittest.TestCase):
         """
         result = self._run_make(
             profile_name="test_with_domain",
-            target_name="test-safe-envsubst-multiple-files",
+            target_name="test-safe-envsubst-with-target",
             TARGET_PATH="manifests/test/kustomize/*.yaml"
         )
 
@@ -231,7 +231,7 @@ class TestMakefileK3s(unittest.TestCase):
 
         result = self._run_make(
             profile_name="test_without_domain",
-            target_name="test-safe-envsubst-multiple-files",
+            target_name="test-safe-envsubst-with-target",
             TARGET_PATH="manifests/test/kustomize/*.yaml"
         )
 
@@ -240,12 +240,12 @@ class TestMakefileK3s(unittest.TestCase):
         self.assertIn("stream_domain: ${DOMAIN}", result.stdout)
 
     @require_binaries("envsubst")
-    def test_safe_envsubst_fails_loudly_on_missing_files(self):
+    def test_safe_envsubst_fails_on_missing_files(self):
         """Verify safe_envsubst handles the Kustomize pattern when no keys match."""
 
         result = self._run_make(
             profile_name="test_without_domain",
-            target_name="test-safe-envsubst-multiple-files",
+            target_name="test-safe-envsubst-with-target",
             TARGET_PATH="manifests/test/nopath/*.yaml"
         )
 
@@ -253,6 +253,86 @@ class TestMakefileK3s(unittest.TestCase):
         # Verify substitution succeeded because the glob was successfully expanded by cat!
         self.assertIn("stream_domain: ${DOMAIN}", result.stdout)
 
+    @require_binaries("envsubst")
+    def test_safe_envsubst_with_spaces_in_filename(self):
+        """Verify safe_envsubst correctly handles filenames with spaces without breaking or word-splitting."""
+
+        # Create a file with spaces in its name
+        spaced_file = self.test_dir / "spaced filename.test"
+        spaced_file.write_text("domain: ${DOMAIN}\n", encoding="utf-8")
+
+        result = self._run_make(
+            profile_name="test_with_domain",
+            target_name="test-safe-envsubst-with-target",
+            TARGET_PATH= spaced_file
+        )
+
+        self.assertEqual(result.returncode, 0, f"Make failed with spaced filename: {result.stderr}")
+        self.assertIn("stream_domain: samjam.dedyn.io", result.stdout)
+
+    @require_binaries("envsubst")
+    def test_safe_envsubst_with_empty_filename_does_not_hang(self):
+        """Verify safe_envsubst with an empty/omitted filename does not hang waiting for stdin."""
+        try:
+            result = self._run_make(
+                profile_name="test_with_domain",
+                target_name="test-safe-envsubst-with-target",
+                TARGET_PATH=""
+            )
+        except subprocess.TimeoutExpired:
+            self.fail("❌ CRITICAL REGRESSION: safe_envsubst hung waiting for stdin on empty argument!")
+
+        self.assertEqual(result.returncode, 0, f"Make failed with spaced filename: {result.stderr}")
+        self.assertIn("stream_domain: ${DOMAIN}", result.stdout)
+
+    @require_binaries("envsubst")
+    def test_safe_envsubst_with_empty_clean_env(self):
+        """Verify safe_envsubst falls back to 'cat' when the environment profile is empty (0-byte)."""
+
+        # Create a completely empty (0-byte) environment profile file
+        profile_dir = self.test_dir / "inventory"
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        empty_env = profile_dir / "empty_profile.env"
+        empty_env.write_text("", encoding="utf-8")
+
+        result = self._run_make(
+            profile_name="empty_profile",
+            target_name="test-safe-envsubst-with-target",
+            TARGET_PATH="manifests/test/kustomize/*.yaml"
+        )
+
+
+        self.assertEqual(result.returncode, 0, f"Make failed with empty env: {result.stderr}")
+        self.assertIn("stream_domain: ${DOMAIN}", result.stdout)
+
+    @require_binaries("envsubst")
+    def test_safe_envsubst_with_missing_clean_env(self):
+        """Verify safe_envsubst falls back to 'cat' when the clean-env cache does not exist on disk."""
+
+        # Run with USE_PROFILES=false. This skips the sanitization step,
+        # preventing the creation of CLEAN_ENV and simulating a missing cache.
+        result = self._run_make(
+            profile_name="unused_profile",
+            target_name="test-safe-envsubst-with-target",
+            TARGET_PATH="manifests/test/kustomize/secret.yaml",
+            USE_PROFILES="false"
+        )
+
+        self.assertEqual(result.returncode, 0, f"Make failed with missing env: {result.stderr}")
+        self.assertIn("stream_domain: ${DOMAIN}", result.stdout)
+
+    @require_binaries("envsubst")
+    def test_safe_envsubst_with_missing_profile(self):
+        """Verify safe_envsubst falls back to 'cat' when the clean-env cache does not exist on disk."""
+
+        result = self._run_make(
+            profile_name="unused_profile",
+            target_name="test-safe-envsubst-with-target",
+            TARGET_PATH="manifests/test/kustomize/secret.yaml",
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("ERROR: Profile configuration file not found at 'inventory/unused_profile.env'!", result.stderr)
 
 if __name__ == "__main__":
     unittest.main()

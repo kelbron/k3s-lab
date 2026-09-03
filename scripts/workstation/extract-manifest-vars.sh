@@ -4,8 +4,8 @@
 set -eu
 
 ENV_FILE="${1:-}"
-if [ -z "$ENV_FILE" ] || [ ! -f "$ENV_FILE" ]; then
-    # Return empty if env file is missing or invalid
+if [ -z "$ENV_FILE" ] || [ ! -f "$ENV_FILE" ] || [ ! -s "$ENV_FILE" ]; then
+    # Return empty if env file is missing, invalid, or completely empty
     echo ""
     exit 0
 fi
@@ -15,11 +15,12 @@ fi
 # 2. Scans the manifest stream (via stdin) for variable placeholder patterns.
 # 3. Intersects and outputs formatted keys for envsubst (e.g., "$DOMAIN $VIP").
 awk '
-    NR==FNR {
-        # 🛡️ Strip leading "export " keyword and whitespace if present
-        sub(/^export[ \t]+/, "", $0)
-        if ($1 ~ /^[A-Za-z0-9_]+/) {
-            split($1, parts, "=")
+    FILENAME == ARGV[1] {
+        line = $0
+        sub(/^[ \t]+/, "", line)
+        sub(/^export[ \t]+/, "", line)
+        if (line ~ /^[A-Za-z0-9_]+=/) {
+            split(line, parts, "=")
             env_keys[parts[1]] = 1
         }
         next

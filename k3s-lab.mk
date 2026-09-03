@@ -13,7 +13,7 @@ USE_PROFILES := $(strip $(USE_PROFILES))
 PROFILE      := $(strip $(PROFILE))
 
 # Define tools that are required by specific targets
-OPTIONAL_TOOLS += python3 terraform kubectl kustomize envsubst ssh
+OPTIONAL_TOOLS += terraform kubectl kustomize envsubst ssh bats
 
 # =============================================================================
 # ENVIRONMENT & PROFILE LOADER
@@ -24,7 +24,7 @@ BUILD_DIR := build
 CLEAN_ENV := $(SECURE_TMP_DIR)/clean-$(PROFILE).env
 
 # 🔌 Bypass profile loading for non-operational utility targets (speeds up help, clean, setup, and tests)
-BYPASS_PROFILE_TARGETS := help clean test setup setup-githooks check-workstation-tools
+BYPASS_PROFILE_TARGETS := help clean clean-module-k3s test test-module-k3s setup setup-githooks check-workstation-tools
 
 MAKECMDGOALS_OR_DEFAULT := $(or $(MAKECMDGOALS),$(.DEFAULT_GOAL))
 
@@ -33,7 +33,7 @@ ifeq ($(filter $(MAKECMDGOALS_OR_DEFAULT),$(BYPASS_PROFILE_TARGETS)),)
     # 🟢 CI/CD Mode: Inherit credentials and vars directly from runner environment
     $(info === CI/CD Mode: Inheriting environment variables from runner ===)
     # 🛡️ Bridge variable extraction safely: dump ONLY valueless key names to secure clean_env
-    _prep_ci_env := $(shell env | cut -d= -f1 | awk '{print $$1 "="}' > $(CLEAN_ENV))
+    _prep_ci_env := $(shell env | sed -n -E 's/^([A-Za-z0-9_]+)=.+/\1=/p' > $(CLEAN_ENV))
   else ifeq ($(USE_PROFILES),true)
     # 💻 Profiles Enabled: Enforce loud fail-fast boundary if profile is missing
     ifeq ($(wildcard $(ENV_FILE)),)
@@ -68,12 +68,15 @@ EXTRACT_VARS := ./scripts/workstation/extract-manifest-vars.sh $(CLEAN_ENV)
 # Wrapped in a subshell group ( ) to safely preserve stream buffers in pipelines.
 # Usage: cat input.yaml | $(call safe_envsubst,template.yaml) > output.yaml
 define safe_envsubst
-    (VARS=$$(cat $(1) | $(EXTRACT_VARS)); \
+$(if $(strip $(1)),\
+    (VARS=$$( (if [ -f "$(1)" ]; then cat "$(1)"; else cat $(1); fi || true) | $(EXTRACT_VARS) ); \
     if [ -n "$$VARS" ]; then \
         envsubst "$$VARS"; \
     else \
         cat; \
-    fi)
+    fi),\
+cat\
+)
 endef
 
 # =============================================================================
@@ -85,7 +88,7 @@ endef
 		provision-nodes deploy-ha-dns sync-azure-secrets apply-globals \
   		kustomize-argocd bootstrap-argocd \
 		deploy-vaultwarden deploy-vw-backup \
-		bundle clean_modules
+		bundle test-module-k3s clean-module-k3s
 
 # ==============================================================================
 # 🚀 MACRO ENTRY POINTS (The platform lifecycle)
@@ -132,7 +135,7 @@ endif
 write-day0-lock: guard-setup
 	@echo "🔒 Writing Day 0 run-once lock to control plane node..." ## Write the Day 0 lock file to the control plane node
 	$(call require_tools,ssh)
-	@ssh -n -q -o BatchMode=yes "$(CONTROL_PLANE_IP)" "sudo mkdir -p /etc/rancher/k3s && sudo touch $(DAY0_LOCK)"
+	@ssh -n -q -o BatchMode=yes "$(CONTROL_PLANE_IP)" "sudo -n mkdir -p /etc/rancher/k3s && sudo -n touch $(DAY0_LOCK)"
 
 # ==============================================================================
 # ⚙️ DETAILED OPERATIONAL TARGETS
@@ -141,7 +144,7 @@ write-day0-lock: guard-setup
 kustomize-argocd: guard-setup ## Compile Kustomize AST and substitute environment variables
 	@echo "=== Compiling and Verifying ArgoCD Kustomize build ==="
 	$(call require_tools,envsubst kubectl kustomize)
-	@if [ -z "$(wildcard manifests/base/argocd/*.yaml)" ]; then \
+	@if [ -z "$$(find manifests/base/argocd -name '*.yaml.template' -print -quit)" ]; then \
 		echo "❌ ERROR: No manifest templates found in manifests/base/argocd/!" && exit 1; \
 	fi
 	@kubectl kustomize manifests/base/argocd/ | $(call safe_envsubst,manifests/base/argocd/*.yaml) \
@@ -203,8 +206,20 @@ bundle: guard-setup ## Bundle the active codebase into a single markdown for AI 
 	$(call run_script,./scripts/workstation/bundle-codebase.sh)
 
 # ==============================================================================
+# 🧪 MODULE TESTS
+# ==============================================================================
+TEST_MODULE_TARGETS += test-module-k3s
+
+test-module-k3s: # run module specific tests that are not covered by the core python tests
+	$(call require_tools, bats)
+	$(call print_separator, Running K3s-lab module BATS tests$(if $(strip $(BATS_OPTS)), with options $(BATS_OPTS)))
+	@bats $(BATS_OPTS) tests/
+	@echo "✅ k3s-lab module tests complete."
+
+# ==============================================================================
 # 🧹 CLEANUP CONTROLS
 # ==============================================================================
+CLEAN_MODULE_TARGETS += clean-module-k3s
 
 is_build_dir_safe = $(and \
 	$(1),\
@@ -215,10 +230,19 @@ is_build_dir_safe = $(and \
 	$(filter-out $(CURDIR) $(CURDIR)/,$(1))\
 )
 
-clean_modules:: # remove build folder. Parent clean runs clean_core first
-#   Only purge BUILD_DIR if it is a safe relative folder name
-	$(if $(call is_build_dir_safe,$(BUILD_DIR)),\
-		@rm -rf "$(BUILD_DIR)" && echo "✅ Purged local build directory: $(BUILD_DIR)",\
-		@echo "⚠️ Skipped BUILD_DIR purge: Absolute path, home folder, or directory traversal detected"\
-	)
+# clean-module-k3s: # remove build folder. Parent clean runs clean_core first
+# 	$(call print_separator,k3s-lab module )
+# #   Only purge BUILD_DIR if it is a safe relative folder name
+# 	$(if $(call is_build_dir_safe,$(BUILD_DIR)),\
+# 		@rm -rf "$(BUILD_DIR)" && echo "✅ Purged local build directory: $(BUILD_DIR)",\
+# 		@echo "⚠️ Skipped BUILD_DIR purge: Absolute path, home folder, or directory traversal detected"\
+# 	)
 
+clean-module-k3s: # remove build folder. Parent clean runs clean_core first
+	$(call print_separator,k3s-lab module )
+# 	Only purge BUILD_DIR if it is a safe relative folder name
+	@if [ -n "$(call is_build_dir_safe,$(BUILD_DIR))" ]; then \
+		rm -rf "$(BUILD_DIR)" && echo "✅ Purged local build directory: $(BUILD_DIR)"; \
+	else \
+		echo "⚠️ Skipped BUILD_DIR purge: Absolute path, home folder, or directory traversal detected"; \
+	fi

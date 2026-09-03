@@ -1,9 +1,9 @@
-import os
 import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+
 
 class TestExtractManifestVars(unittest.TestCase):
     def setUp(self):
@@ -93,5 +93,72 @@ class TestExtractManifestVars(unittest.TestCase):
         self.assertIn("$INGRESS_IP", extracted_vars, "❌ BUG DETECTED: The variable 'INGRESS_IP' was missed due to the leading export statement!")
         self.assertEqual(extracted_vars, {"$DOMAIN", "$INGRESS_IP"})
 
+    def test_empty_env_file_does_not_corrupt_manifest_processing(self):
+        """
+        Verify that an empty (0-byte) .env file does not cause the first line of the
+        manifest stream to be treated as an environment variable and skipped.
+        """
+        env_content = "" # 0-byte file
+        manifest_content = "domain: ${DOMAIN}\n"
+
+        output = self.run_script(env_content, manifest_content)
+
+        # Output must be empty since the env file is empty
+        self.assertEqual(output, "")
+
+    def test_indented_export_and_variables(self):
+        """
+        Verify that variables with leading spaces or tabs (indented variables
+        and indented export keywords) are correctly stripped and parsed.
+        """
+        env_content = (
+            "  export DOMAIN=samjam.dedyn.io\n"
+            "\texport VIP=192.168.1.53\n"
+            "   GATEWAY=192.168.1.1\n"
+            "K3S_TOKEN=secret\n"
+        )
+        manifest_content = (
+            "domain: ${DOMAIN}\n"
+            "vip: $VIP\n"
+            "gateway: ${GATEWAY}\n"
+            "token: $K3S_TOKEN\n"
+        )
+
+        output = self.run_script(env_content, manifest_content)
+        extracted_vars = set(output.split())
+
+        self.assertEqual(extracted_vars, {"$DOMAIN", "$VIP", "$GATEWAY", "$K3S_TOKEN"})
+
+    def test_invalid_and_commented_lines_ignored(self):
+        """
+        Verify that commented lines, blank lines, whitespace-only lines, and lines
+        without assignments are safely ignored by the environment parser.
+        """
+        env_content = (
+            "# IGNORED_VAR=1\n"
+            "  # INDENTED_IGNORED=2\n"
+            "\n"
+            "   \n"
+            "export\n"
+            "MALFORMED_LINE_NO_EQUALS\n"
+            "VALID_VAR=3\n"
+        )
+        manifest_content = (
+            "ignored: ${IGNORED_VAR}\n"
+            "indented: $INDENTED_IGNORED\n"
+            "exp: $export\n"
+            "malformed: $MALFORMED_LINE_NO_EQUALS\n"
+            "valid: $VALID_VAR\n"
+        )
+
+        output = self.run_script(env_content, manifest_content)
+        extracted_vars = set(output.split())
+
+        self.assertNotIn("$export", extracted_vars)
+        self.assertNotIn("$IGNORED_VAR", extracted_vars)
+        self.assertNotIn("$INDENTED_IGNORED", extracted_vars)
+        self.assertNotIn("$MALFORMED_LINE_NO_EQUALS", extracted_vars)
+        self.assertEqual(extracted_vars, {"$VALID_VAR"})
+        
 if __name__ == "__main__":
     unittest.main()
