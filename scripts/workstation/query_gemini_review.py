@@ -142,7 +142,7 @@ def filter_suppressed_comments(review_data, changed_lines, repo_root="."):
                 if "ai-ignore" in target_line:
                     print(f"🔇 Suppressed AI comment on {filename}:{line_num_int} due to inline 'ai-ignore' override.")
                     continue
-        except Exception as e:
+        except (OSError, UnicodeDecodeError) as e:
             print(f"⚠️ Warning reading file {filename} during suppression check: {e}", file=sys.stderr)
 
         filtered_comments.append(comment)
@@ -234,7 +234,7 @@ def main():
     default_output = {"comments": []}
     try:
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-    except Exception:
+    except OSError:
         pass
 
     with open(output_path, "w", encoding="utf-8") as f:
@@ -432,7 +432,7 @@ For larger context, here is the full unified diff of the changes:
                 print(f"❌ Connection/Socket Error: {err_msg}", file=sys.stderr)
                 sys.exit(1)
 
-        except Exception as e:
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError, KeyError, IndexError) as e:
             print(f"❌ Error during AI review processing: {e}", file=sys.stderr)
             sys.exit(1)
 

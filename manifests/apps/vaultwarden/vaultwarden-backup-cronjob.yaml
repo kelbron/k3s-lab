@@ -12,12 +12,14 @@ spec:
           nodeSelector:
             workload-type: compute
           hostAliases:
-          - ip: "${INGRESS_IP}" 
+          - ip: "${INGRESS_IP}"
             hostnames:
             - "vault.${DOMAIN}"
           containers:
           - name: bw-backup-runner
             image: node:20-alpine # Your original, trusted Node.js Alpine image
+            securityContext:
+              allowPrivilegeEscalation: false
             command: ["/bin/sh", "-c"]
             args:
               - |
@@ -25,15 +27,15 @@ spec:
 
                 # 1. Install the official Bitwarden CLI, KeePassXC, and Rclone
                 echo "--> Installing runtime dependencies..."
-                apk add --no-cache keepassxc rclone expect jq > /dev/null
+                apk add --no-cache rclone jq > /dev/null
                 npm install -g @bitwarden/cli > /dev/null
 
                 echo "--> Configuring Vaultwarden API endpoint..."
                 bw config server "${VW_URL}"
-              
+
                 echo "--> Authenticating via API Key..."
                 bw login --apikey > /dev/null
-              
+
                 echo "--> Unlocking Vault..."
                 export BW_SESSION=$(bw unlock "${BW_PASSWORD}" --raw)
 
@@ -42,16 +44,20 @@ spec:
                 echo "--> Fetching and Exporting Organization Vaults..."
                 # The corrected jq syntax that iterates through all organizations
                 bw list organizations --session "${BW_SESSION}" | jq -r '.[] | "\(.id)|\(.name)"' | while IFS="|" read -r ORG_ID ORG_NAME; do
-                  
+
                   SAFE_NAME=$(echo "$ORG_NAME" | tr ' ' '_')
+                  EXPORT_FILE="/backup/org_${SAFE_NAME}.json"
+
                   echo "--> Exporting Organization: $ORG_NAME"
-                  
-                  bw export --organizationid "$ORG_ID" --output "/backup/org_${SAFE_NAME}.json" --format encrypted_json --password "$KDBX_PASSWORD" --session "${BW_SESSION}"
-                  rclone copy "/backup/org_${SAFE_NAME}.json" remote:"${CLEAN_PATH}"
+
+                  bw export --organizationid "$ORG_ID" --output "$EXPORT_FILE" --format encrypted_json --password "$KDBX_PASSWORD" --session "${BW_SESSION}"
+                  rclone copy "$EXPORT_FILE" remote:"${CLEAN_PATH}"
+
+                  # Clean up hostPath storage only after a verified successful copy
+                  rm -f "$EXPORT_FILE"
                 done
 
-                echo "--> Cleaning up..."
-                rm -f /tmp/vault-export.csv
+                echo "--> Locking Vault and clearing session..."
                 bw lock
                 unset BW_SESSION
                 echo "--> Backup sequence complete."
@@ -76,7 +82,7 @@ spec:
                 secretKeyRef:
                   name: vaultwarden-backup-credentials
                   key: KDBX_PASSWORD
-            
+
             # --- PULL NON-SECRETS FROM GLOBAL CONFIGMAP ---
             - name: VW_BACKUP_LOCATION
               valueFrom:
@@ -100,7 +106,7 @@ spec:
                 configMapKeyRef:
                   name: homelab-globals
                   key: VW_BACKUP_REMOTE_TYPE
-            
+
             volumeMounts:
             - name: backup-storage
               mountPath: /backup

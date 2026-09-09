@@ -88,3 +88,6 @@ manifests/base/temp/
 
 # BATS runtime
 .bats/
+
+# exclude local mise overrides
+mise.local.toml

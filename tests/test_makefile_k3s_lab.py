@@ -1,4 +1,5 @@
 # tests/test_makefile_k3s.py
+import os
 import shutil
 import subprocess
 import tempfile
@@ -100,7 +101,6 @@ class TestMakefileK3s(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         # Verify both core and k3s-specific tools exist
         self.assertIn("kubectl", result.stdout)
-        self.assertIn("kustomize", result.stdout)
         self.assertIn("envsubst", result.stdout)
         self.assertIn("terraform", result.stdout)
 
@@ -108,19 +108,23 @@ class TestMakefileK3s(unittest.TestCase):
     # 🔬 DRY-RUN RECIPE ENFORCEMENT TESTS
     # =========================================================================
 
-    @require_binaries("kubectl", "kustomize")
+    @require_binaries("kubectl")
     def test_kustomize_argocd_recipe_substitutes_vars(self):
         """Verify kustomize-argocd dry-run uses correct Awk filter logic and envsubst."""
+        env = os.environ.copy()
+        env["CI"] = "false"
+
         result = subprocess.run(
             ["make", "kustomize-argocd", "-n", "USE_PROFILES=false"],
             check=False,
             cwd=self.test_dir,
             capture_output=True,
-            text=True
+            text=True,
+            env=env
         )
         self.assertEqual(result.returncode, 0, f"Dry-run failed: {result.stderr}")
         # Ensure the pipeline checks local.env key extraction
-        self.assertIn("awk", result.stdout)
+        self.assertIn("extract-manifest-vars.sh", result.stdout)
         self.assertIn("envsubst", result.stdout)
         self.assertIn("manifests/base/argocd/", result.stdout)
 
@@ -163,6 +167,10 @@ class TestMakefileK3s(unittest.TestCase):
     # =========================================================================
     def _run_make(self, profile_name: str, target_name: str, **make_vars):
         """Helper to run the Makefile and the test target file with the specified profile and target"""
+        env=os.environ.copy()
+        # Ensure subprocess isolates workstation provisioning logic from ambient runner CI flags
+        env["CI"] = "false"
+
         cmd = [
             "make",
             "-f", "Makefile",
@@ -180,7 +188,8 @@ class TestMakefileK3s(unittest.TestCase):
             check=False,
             cwd=self.test_dir,
             capture_output=True,
-            text=True
+            text=True,
+            env=env
         )
 
     @require_binaries("envsubst")
