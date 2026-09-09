@@ -176,6 +176,9 @@ setup: check-workstation-tools setup-githooks ## Bootstrap local WSL workspace a
 	@echo "=========================================================================="
 
 setup-githooks: ## Activate local Git hooks and map core.hooksPath
+ifeq ($(CI),true)
+	@echo "🟢 CI/CD environment detected. Bypassing Git hooks registration."
+else
 	@echo "⚓ Activating local workstation Git hooks..."
 	$(call require_tools,git)
 	@chmod +x githooks/pre-commit githooks/commit-msg 2>/dev/null || true
@@ -183,6 +186,7 @@ setup-githooks: ## Activate local Git hooks and map core.hooksPath
 	@chmod +x scripts/workstation/*.sh 2>/dev/null || true
 	@git config core.hooksPath githooks
 	@echo "✅ Git hooks successfully mapped to 'githooks/' and marked executable!"
+endif
 
 check-workstation-tools: ## Validate if required binaries are present on disk without hard fail
 	@echo "🔎 Auditing workstation binary toolchain..."
@@ -237,13 +241,7 @@ test: test_core test_modules
 # 🛡️ Pure GNU Make-level path safety checkers (No subshell spawn overhead, completely decoupled)
 is_secure_tmp_safe = $(and $(1),$(filter /tmp/%,$(1)),$(filter-out /tmp /tmp/,$(subst //,/,$(subst //,/,$(strip $(1))))))
 
-# clean_core: # Remove decrypted environment caches
-# 	$(call print_separator, 🧹 Wiping workspace build artifacts and secure caches)
-# #   Only purge SECURE_TMP_DIR if it is strictly a safe /tmp subdirectory
-# 	$(if $(call is_secure_tmp_safe,$(SECURE_TMP_DIR)),\
-# 		@rm -rf "$(SECURE_TMP_DIR)" && echo "✅ Purged secure temp directory: $(SECURE_TMP_DIR)",\
-# 		@echo "⚠️ Skipped SECURE_TMP_DIR purge: Path is empty or unsafe or outside /tmp/"\
-# 	)
+
 
 clean_core: # Remove decrypted environment caches
 	$(call print_separator, 🧹 Wiping workspace build artifacts and secure caches)
