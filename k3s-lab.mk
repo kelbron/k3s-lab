@@ -13,7 +13,7 @@ USE_PROFILES := $(strip $(USE_PROFILES))
 PROFILE      := $(strip $(PROFILE))
 
 # Define tools that are required by specific targets
-OPTIONAL_TOOLS += terraform kubectl kustomize envsubst ssh bats
+OPTIONAL_TOOLS += terraform kubectl envsubst ssh bats
 
 # =============================================================================
 # ENVIRONMENT & PROFILE LOADER
@@ -143,7 +143,7 @@ write-day0-lock: guard-setup
 
 kustomize-argocd: guard-setup ## Compile Kustomize AST and substitute environment variables
 	@echo "=== Compiling and Verifying ArgoCD Kustomize build ==="
-	$(call require_tools,envsubst kubectl kustomize)
+	$(call require_tools,envsubst kubectl)
 	@if [ -z "$$(find manifests/base/argocd -name '*.yaml.template' -print -quit)" ]; then \
 		echo "❌ ERROR: No manifest templates found in manifests/base/argocd/!" && exit 1; \
 	fi
