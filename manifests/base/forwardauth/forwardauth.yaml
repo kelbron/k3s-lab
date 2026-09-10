@@ -60,11 +60,11 @@ spec:
               name: entra-id-credentials
               key: cookie-secret
         - name: AUTH_HOST
-          value: auth.samjam.dedyn.io
+          value: "auth.DOMAIN"
         - name: URL_PATH
           value: /_oauth
         - name: COOKIE_DOMAIN
-          value: samjam.dedyn.io
+          value: "DOMAIN"
         - name: PROVIDERS_OIDC_USER_ID_CLAIM
           value: preferred_username
         - name: LOG_LEVEL
@@ -108,10 +108,10 @@ metadata:
 spec:
   tls:
     - hosts:
-        - auth.samjam.dedyn.io
-      secretName: samjam-dedyn-io-tls
+        - "auth.DOMAIN"
+      secretName: wildcard-tls-secret
   rules:
-    - host: auth.samjam.dedyn.io
+    - host: "auth.DOMAIN"
       http:
         paths:
           - path: /

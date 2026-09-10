@@ -4,6 +4,8 @@ metadata:
   name: homelab-globals
   namespace: default
 data:
+  DOMAIN: "${DOMAIN}"
+  ACME_EMAIL: "${ACME_EMAIL}"
   VW_BACKUP_REMOTE_TYPE: "${VW_BACKUP_REMOTE_TYPE}"
   VW_BACKUP_LOCATION: "${VW_BACKUP_LOCATION}"
   VW_URL: "${VW_URL}"

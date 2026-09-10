@@ -32,10 +32,10 @@ metadata:
 spec:
   tls:
     - hosts:
-        - vault.samjam.dedyn.io
-      secretName: samjam-dedyn-io-tls
+        - "vault.DOMAIN"
+      secretName: wildcard-tls-secret
   rules:
-    - host: vault.samjam.dedyn.io
+    - host: "vault.DOMAIN"
       http:
         paths:
           - path: /

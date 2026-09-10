@@ -1,14 +1,15 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: wildcard-samjam-cert
+  name: wildcard-tls-cert
   namespace: default
 spec:
-  commonName: samjam.dedyn.io
+  # Initial baseline defaults; overwritten dynamically by Kustomize replacements from homelab-globals
+  commonName: "DOMAIN"
   dnsNames:
-    - samjam.dedyn.io
-    - "*.samjam.dedyn.io"
+    - "DOMAIN"
+    - "*.DOMAIN"
   issuerRef:
     name: letsencrypt-production
     kind: ClusterIssuer
-  secretName: samjam-dedyn-io-tls
+  secretName: wildcard-tls-secret
