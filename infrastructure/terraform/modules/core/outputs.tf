@@ -21,5 +21,5 @@ output "client_secret" {
 
 output "tenant_id" {
   description = "The Azure Tenant ID"
-  value       = data.azurerm_client_config.current.tenant_id
+  value       = local.tenant_id
 }

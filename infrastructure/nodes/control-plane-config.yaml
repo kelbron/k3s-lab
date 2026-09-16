@@ -1,6 +1,6 @@
 # /etc/rancher/k3s/config.yaml on KC01
-node-ip: "192.168.1.50"
-flannel-iface: "enp0s31f6"
+node-ip: "${CONTROL_PLANE_IP}"
+flannel-iface: "${INTERFACE}"
 write-kubeconfig-mode: "0644"  #home lab convenience, allows non-root users to read the kubeconfig
 node-taint:
   - "node-role.kubernetes.io/control-plane:NoSchedule"

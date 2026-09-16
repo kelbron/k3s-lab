@@ -185,9 +185,9 @@ deploy-vaultwarden: guard-setup ## Deploy standalone Vaultwarden Docker containe
 	$(call run_script,./scripts/bare-metal/deploy-vaultwarden.sh)
 
 sync-azure-secrets: guard-setup ## Sync Azure Key Vault credentials to K3s cluster
-	@echo "=== Syncing Azure Key Vault Credentials to K3s ==="
+	@echo "=== Syncing Azure Key Vault Credentials to K3s from ${TF_DIR} ==="
 	$(call require_tools,ssh)
-	$(call run_script,./scripts/azure/sync-azure-secrets.sh)
+	$(call run_script,./scripts/azure/sync-azure-secrets.sh "${TF_DIR}" "${KUBECONFIG}")
 
 apply-globals: guard-setup ## Inject homelab global environment ConfigMaps
 	@echo "=== Injecting global configuration from environment variables ==="

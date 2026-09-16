@@ -25,6 +25,3 @@ provider "azurerm" {
 
 # Add the Azure Active Directory (Entra ID) provider
 provider "azuread" {}
-
-# Fetch the Azure AD tenant and object ID of the user executing the code
-data "azurerm_client_config" "current" {}

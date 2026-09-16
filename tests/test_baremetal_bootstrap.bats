@@ -444,10 +444,39 @@ generate_failed_node_connection_tests
     assert_file_contains "^SSH|${CONTROL_PLANE_NODE}|MKDIR|${STAGING_DIR}|-|mode:700|" "$TELEMETRY_LOG"
 
     # 2. Verify control-plane configuration file transfer via SCP
-    assert_file_contains "^SCP|${CONTROL_PLANE_NODE}|PUT|${STAGING_DIR}/config.yaml|${REPO_ROOT}/infrastructure/nodes/control-plane-config.yaml|" "$TELEMETRY_LOG"
+    assert_file_contains "^SCP|${CONTROL_PLANE_NODE}|PUT|${STAGING_DIR}/config.yaml|${SECURE_TMP_DIR}/control-plane-config.yaml|" "$TELEMETRY_LOG"
 
     # 3. Verify configuration application script execution with control-plane role
     assert_file_contains "^SSH|${CONTROL_PLANE_NODE}|EXEC|"/usr/local/bin/apply-k3s-node-config.sh"|${STAGING_DIR}/config.yaml|sudo:true|" "$TELEMETRY_LOG"
+}
+
+@test "behaviour: deploys and configures control plane node with rendered config template" {
+    export STAGING_DIR="k3s-staging"
+    export CONTROL_PLANE_NODE="CP01"
+    export CONTROL_PLANE_IP="10.66.42.100"
+    export INTERFACE="eth0-test"
+    export DOLLAR='$'
+
+    # Ensure template file exists for test harness
+    local template_file="${REPO_ROOT}/infrastructure/nodes/control-plane-config.yaml"
+    [ -f "$template_file" ] || {
+        echo "SETUP ERROR: control-plane-config.yaml missing at '$template_file'" >&2
+        return 1
+    }
+
+    rendered_config="${SECURE_TMP_DIR}/control-plane-config.yaml"
+
+    run "${SCRIPT_UNDER_TEST}"
+
+    assert_success
+    assert_file_contains "node-ip: \"10.66.42.100\"" "$rendered_config"
+    assert_file_contains "flannel-iface: \"eth0-test\"" "$rendered_config"
+
+    # Verify no unexpanded template placeholders remain
+    assert_file_not_contains '\$CONTROL_PLANE_IP' "$rendered_config"
+    assert_file_not_contains '\${CONTROL_PLANE_IP}' "$rendered_config"
+    assert_file_not_contains '\$INTERFACE' "$rendered_config"
+    assert_file_not_contains '\${INTERFACE}' "$rendered_config"
 }
 
 @test "behaviour: fetches k3s node token from control plane node successfully" {
