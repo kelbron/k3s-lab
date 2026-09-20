@@ -99,11 +99,18 @@ done
 echo ""
 echo "=== Deploying Control Plane ($CONTROL_PLANE_NODE) ==="
 
+echo "--> Rendering control plane config template"
+# shellcheck disable=SC2016
+# Use envsubst to populate the YAML template with our active memory variables
+envsubst '$CONTROL_PLANE_IP $INTERFACE' \
+    < "${REPO_ROOT}/infrastructure/nodes/control-plane-config.yaml" \
+    > "${SECURE_TMP_DIR}/control-plane-config.yaml"
+
 # We don't need a secure staging directory for the control-plane but using one protects us if the config.yaml changes
 echo "--> Creating secure static staging path on ${CONTROL_PLANE_NODE}..."
 # mkdir -m 700 applies strict 700 permissions creating a secure folder
 ssh -n -o BatchMode=yes "${CONTROL_PLANE_NODE}" "mkdir -m 700 -p '${STAGING_DIR}'"
-scp -o BatchMode=yes "${REPO_ROOT}/infrastructure/nodes/control-plane-config.yaml" "${CONTROL_PLANE_NODE}:${STAGING_DIR}/config.yaml"
+scp -o BatchMode=yes "${SECURE_TMP_DIR}/control-plane-config.yaml" "${CONTROL_PLANE_NODE}:${STAGING_DIR}/config.yaml"
 ssh -n -o BatchMode=yes "${CONTROL_PLANE_NODE}" "sudo /usr/local/bin/apply-k3s-node-config.sh '${STAGING_DIR}/config.yaml'"
 
 wait_for_condition 12 5 "K3s control plane to be ready" ssh -n -o BatchMode=yes "${CONTROL_PLANE_NODE}" "sudo k3s kubectl get nodes | grep -qw 'Ready'"

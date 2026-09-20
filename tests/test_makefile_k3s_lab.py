@@ -13,7 +13,7 @@ from tests.support.support import enforce_test_toolchain, require_binaries
 class TestMakefileK3s(unittest.TestCase):
 
     HARD_REQUIREMENTS: ClassVar[list[str]] = ["make"]
-    SOFT_REQUIREMENTS: ClassVar[list[str]] = ["kubectl", "kustomize", "envsubst"]
+    SOFT_REQUIREMENTS: ClassVar[list[str]] = ["kubectl", "kustomize", "envsubst", "terraform"]
 
     @classmethod
     def setUpClass(cls):
@@ -57,6 +57,10 @@ class TestMakefileK3s(unittest.TestCase):
         self.env_file.write_text("DOMAIN=samjam.dedyn.io\nVIP=192.168.1.53\n", encoding="utf-8")
         self.env_file = self.inventory_dir / "test_without_domain.env"
         self.env_file.write_text("MY_DOMAIN=kelbron.ca\nVIP=192.168.1.53\n", encoding="utf-8")
+        self.env_file = self.inventory_dir / "test_profile.env"
+        self.env_file.write_text("DOMAIN=samjam.dedyn.io\nVIP=192.168.1.53\n", encoding="utf-8")
+        self.env_file = self.inventory_dir / "test_profile.tfvars"
+        self.env_file.write_text("subscription_id = \"test-id\"\n", encoding="utf-8")
 
         # Create dummy manifests directory to prevent Kustomize errors
         self.manifest_dir = self.test_dir / "manifests/test/kustomize"
@@ -165,20 +169,23 @@ class TestMakefileK3s(unittest.TestCase):
     # =========================================================================
     # 🛡️ SAFE_ENVSUBST TESTS
     # =========================================================================
-    def _run_make(self, profile_name: str, target_name: str, **make_vars):
+    def _run_make(self, profile_name: str, target_name: str, dry_run: bool = False, **make_vars):
         """Helper to run the Makefile and the test target file with the specified profile and target"""
         env=os.environ.copy()
         # Ensure subprocess isolates workstation provisioning logic from ambient runner CI flags
         env["CI"] = "false"
 
-        cmd = [
-            "make",
+        cmd = ["make"]
+        if dry_run:
+            cmd.append("-n")
+
+        cmd.extend([
             "-f", "Makefile",
             "-f", self.test_targets_mk,
             target_name,
             "USE_PROFILES=true",
             f"PROFILE={profile_name}"
-        ]
+        ])
 
         for key, value in make_vars.items():
             cmd.append(f"{key}={value}")
@@ -342,6 +349,108 @@ class TestMakefileK3s(unittest.TestCase):
 
         self.assertEqual(result.returncode, 2)
         self.assertIn("ERROR: Profile configuration file not found at 'inventory/unused_profile.env'!", result.stderr)
+
+    # =========================================================================
+    # 🛡️ TERRAFORM TARGETS & GUARDRAILS TESTS
+    # =========================================================================
+
+    def test_guard_tfvars_fails_when_var_file_missing(self):
+        """Assert guard-tfvars fails fast with a clear error if the .tfvars file does not exist."""
+        result = self._run_make(
+            profile_name="test_with_domain",
+            target_name="guard-tfvars"
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(f"ERROR: Var file not found at '{self.test_dir}/inventory/test_with_domain.tfvars'", result.stdout)
+
+    def test_guard_tfvars_succeeds_when_var_file_exists(self):
+        """Assert guard-tfvars passes when inventory/$(PROFILE).tfvars exists on disk."""
+        result = self._run_make(
+            profile_name="test_profile",
+            target_name="guard-tfvars"
+        )
+        self.assertEqual(result.returncode, 0, f"guard-tfvars failed: {result.stderr}")
+
+    def test_tf_vars_file_ignores_ambient_environment_overrides(self):
+        """Assert TF_VARS_FILE hard-binds to PROFILE and ignores lingering shell environment vars."""
+        env = os.environ.copy()
+        #  This file exists in the test.dir
+        env["TF_VARS_FILE"] = f"{self.test_dir}/inventory/test_profile.tfvars"
+
+        result = self._run_make(
+            profile_name="test_with_domain",   # env file exists but tfvars does bot
+            target_name="guard-tfvars"
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        print(result.stdout)
+        # Verify it targeted test_with_domain.tfvars, NOT test_profile.tfvars
+        self.assertIn(f"ERROR: Var file not found at '{self.test_dir}/inventory/test_with_domain.tfvars'", result.stdout)
+
+    def test_tf_plan_dry_run_recipe_structure(self):
+        """Verify tf-plan dry-run formats terraform plan -out with the secure temp path."""
+
+        (self.test_dir / ".setup_done").touch()   # mock setup done
+
+        result = self._run_make(
+            profile_name="test_profile",
+            target_name="tf-plan",
+            dry_run=True
+        )
+
+        print(result.stdout)
+        self.assertEqual(result.returncode, 0, f"Dry-run failed: {result.stderr}")
+        self.assertIn("terraform -chdir=infrastructure/terraform plan", result.stdout)
+        # ensure that -out=tfplan comes after plan allowing for other options
+        self.assertRegex(result.stdout, r"(?<=\s)plan\s+.*-out=\S*\/tfplan(?:\s|$)")
+
+    def test_tf_apply_dry_run_recipe_purges_plan_file(self):
+        """Verify tf-apply dry-run executes apply on the saved tfplan and cleans it up afterward."""
+        (self.test_dir / ".setup_done").touch()   # mock setup done
+
+        result = self._run_make(
+            profile_name="test_profile",
+            target_name="tf-apply",
+            dry_run=True
+        )
+
+        self.assertEqual(result.returncode, 0, f"Dry-run failed: {result.stderr}")
+        self.assertIn("terraform -chdir=infrastructure/terraform apply", result.stdout)
+
+        # Verifies 'apply' is followed by a plan file ending in '/tfplan', allowing flags in between
+        self.assertRegex(result.stdout, r"(?<=\s)apply\s+.*\S*\/tfplan(?:\s|$)")
+
+        # Verifies 'rm -f' explicitly purges the '/tfplan' file path
+        self.assertRegex(result.stdout, r"rm\s+-f\s+\S*\/tfplan(?:\s|$)")
+
+    def test_tf_deploy_executes_targets_in_order(self):
+        """Verify tf-deploy executes tf-init, tf-plan, and tf-apply in strict sequential order."""
+        (self.test_dir / ".setup_done").touch()   # mock setup done
+
+        result = self._run_make(
+            profile_name="test_profile",
+            target_name="tf-deploy",
+            dry_run=True
+        )
+
+        self.assertEqual(result.returncode, 0, f"Dry-run failed: {result.stderr}")
+
+        print(result.stdout)
+        # Locate the position of each step in the output stream
+        init_pos = result.stdout.find("tf-init")
+        plan_pos = result.stdout.find("tf-plan")
+        apply_pos = result.stdout.find("tf-apply")
+
+        # 1. Assert all targets fired
+        self.assertNotEqual(init_pos, -1, "tf-init target was not executed")
+        self.assertNotEqual(plan_pos, -1, "tf-plan target was not executed")
+        self.assertNotEqual(apply_pos, -1, "tf-apply target was not executed")
+
+        # 2. Assert strict sequential order: init -> plan -> apply
+        self.assertTrue(
+            init_pos < plan_pos < apply_pos,
+            f"Execution order violation! Positions: init={init_pos}, plan={plan_pos}, apply={apply_pos}"
+        )
 
 if __name__ == "__main__":
     unittest.main()

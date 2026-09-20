@@ -35,3 +35,40 @@ During the provisioning of external cloud dependencies (e.g., Azure Key Vault, M
 * **The Issue:** The Global Administrator or Subscription Owner does not automatically have visibility into billing credits in the standard Azure Portal `Cost Management` blade due to Azure's strict financial scope separation.
 * **The Finding:** For credits acquired via sponsorships, Visual Studio, or partner grants, balances are completely isolated from the main portal and must be checked at the dedicated external tracking site (`microsoftazuresponsorships.com`).
 * **The Solution:** Use the dedicated external tracking site (`microsoftazuresponsorships.com`) instead of the standard Azure billing portal when reviewing sponsorship or grant credit balances.
+
+### Section 6: Remote State Locking and Execution Strategy (HCP Terraform)
+
+#### Context
+Prior to this amendment, Terraform state for Azure cloud dependencies was maintained locally (`terraform.tfstate`). This introduced risks of state amnesia/corruption (if execution was interrupted) and lacked concurrent execution locks or centralized audit history. While evaluating remote backends, commercial B2B options (e.g., Spacelift) were rejected due to high entry costs ($20k+/yr enterprise focus, 14-day trial limits) and lack of a permanent free tier suitable for a homelab environment.
+
+#### Decision
+We will standardize on **HCP Terraform (Terraform Cloud)** under the **`kelbron`** organization using the **Free Tier** (permanent allocation supporting up to 500 managed resources and unlimited users).
+
+1. **Workspace Architecture:**
+   - Workspace Name: `k3s-lab-azure`
+   - Organization: `kelbron` (aligned with GitHub Organization name for VCS integration)
+2. **Execution Mode:**
+   - **Local Execution Mode (`execution_mode = "local"`):** Terraform `plan` and `apply` operations execute on the local workstation CLI (where relative module paths like `../../modules/core` are accessible on disk), while state storage and state locking are offloaded to HCP Terraform.
+3. **Backend Declaration:**
+   - Isolated in `backend.tf` within the root Terraform module (`infrastructure/terraform/backend.tf`).
+
+#### Code Pattern (`backend.tf`)
+```hcl
+terraform {
+  required_version = ">= 1.5.0"
+
+  cloud {
+    organization = "kelbron"
+
+    workspaces {
+      name = "k3s-lab-azure"
+    }
+  }
+}
+```
+
+#### Consequences & Benefits
+- **Zero Cost & Generous Quota:** 500 managed resources easily covers the homelab footprint (<10 cloud resources) at $0/month.
+- **State Protection:** Automatic remote state encryption, locking during applies, and full version history prevent local file loss or state corruption.
+- **Local Module Compatibility:** Local CLI execution mode avoids remote runner relative path errors (`../../modules`) while maintaining cloud state integrity.
+

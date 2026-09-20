@@ -316,7 +316,11 @@ teardown() {
 }
 
 @test "validation: fails fast when common-lib.sh is not readable (chmod 000)" {
-    if [ "$(id -u)" -eq 0 ]; then
+    # Disallow root execution in CI; allow safe skip only during local dev runs
+    if [ "$(command id -u)" -eq 0 ]; then
+        if [ "${CI:-false}" = "true" ]; then
+            fail "CI pipeline is running as root (UID 0). CI runners must execute as a non-privileged user."
+        fi
         skip "Root user bypasses standard [ -r ] file permission checks"
     fi
 
@@ -506,7 +510,7 @@ teardown() {
 @test "behaviour: invokes k3s-agent worker readiness probe (10248/healthz) with expected contract" {
     export MOCK_ENABLE_K3S=false
     export MOCK_ENABLE_K3S_AGENT=true
-    
+
     curl() {
         if [[ "$*" =~ "10248/healthz" ]]; then
             echo "ok"

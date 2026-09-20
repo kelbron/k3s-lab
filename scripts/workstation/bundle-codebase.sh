@@ -81,6 +81,7 @@ main() {
     append_files '## ☸️ Declarative Infrastructure Files' 'yaml' 'infrastructure/**/*.yaml' 'infrastructure/**/*.yml' 'infrastructure/**/*.tf'
     append_files '## 📁 Core Configuration Files' 'yaml' 'core/**/*.service' 'core/**/*.yaml' 'core/**/*.yml' 'core/**/*.template'
     append_files '## 📁 Inventory Files' 'yaml' 'inventory/**/*.env' 'inventory/**/*.ini'
+    append_files '## 🧪 Test Files' 'bats/python' 'tests/**/*.bats' 'tests/**/*.py' 'tests/**/*.bash'
 
     printf '\nCodebase successfully compiled to %s!\n' "$OUTPUT_FILE"
 }
