@@ -1,16 +1,3 @@
-terraform {
-  required_providers {
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "=5.0.0"
-    }
-    azuread = {
-      source  = "hashicorp/azuread"
-      version = "~> 3.9"
-    }
-  }
-}
-
 provider "azurerm" {
   # Prevent Terraform from attempting to register missing resource providers
   resource_provider_registrations = "none"
@@ -24,4 +11,6 @@ provider "azurerm" {
 }
 
 # Add the Azure Active Directory (Entra ID) provider
-provider "azuread" {}
+provider "azuread" {
+    tenant_id = local.tenant_id
+}

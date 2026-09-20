@@ -50,6 +50,13 @@ ifeq ($(filter $(MAKECMDGOALS_OR_DEFAULT),$(BYPASS_PROFILE_TARGETS)),)
   endif
 endif
 
+# specify default terraform directory
+TF_DIR ?= infrastructure/terraform
+TF_VARS_FILE := $(abspath inventory/$(PROFILE).tfvars)
+
+# automatically inject the terraform var file into every terraform plan command
+export TF_CLI_ARGS_plan := -var-file=$(TF_VARS_FILE)
+
 # Centralized staging files in a secure, unprivileged directory
 STAGE_kustomize-argocd := $(SECURE_TMP_DIR)/kustomize-argocd.yaml
 STAGE_kustomize-argocd-core := $(SECURE_TMP_DIR)/kustomize-argocd-core.yaml
@@ -88,6 +95,7 @@ endef
 		provision-nodes deploy-ha-dns sync-azure-secrets apply-globals \
   		kustomize-argocd bootstrap-argocd \
 		deploy-vaultwarden deploy-vw-backup \
+		tf-init tf-plan tf-apply tf-deploy \
 		bundle test-module-k3s clean-module-k3s
 
 # ==============================================================================
@@ -95,7 +103,7 @@ endef
 # ==============================================================================
 
 # DAY 0: Bare Metal & Host OS Layer (Locked to run-once; override with FORCE=true)
-day0-bare-metal: guard-setup check-day0-lock provision-nodes deploy-ha-dns write-day0-lock ## [Day 0] Provision bare-metal nodes and deploy HA DNS (Keepalived + Pi-hole)
+day0-bare-metal: guard-setup check-day0-lock provision-nodes deploy-ha-dns tf-deploy write-day0-lock ## [Day 0] Provision bare-metal nodes and deploy HA DNS (Keepalived + Pi-hole)
 	@echo "✅ [Day 0 Complete] Physical hosts provisioned and routing is stable."
 
 # DAY 1: Platform Core & Control Plane (Gated by TDD Workstation Unit Tests)
@@ -186,8 +194,8 @@ deploy-vaultwarden: guard-setup ## Deploy standalone Vaultwarden Docker containe
 
 sync-azure-secrets: guard-setup ## Sync Azure Key Vault credentials to K3s cluster
 	@echo "=== Syncing Azure Key Vault Credentials to K3s from ${TF_DIR} ==="
-	$(call require_tools,ssh)
-	$(call run_script,./scripts/azure/sync-azure-secrets.sh "${TF_DIR}" "${KUBECONFIG}")
+	$(call require_tools,ssh terraform)
+	$(call run_script,./scripts/azure/sync-azure-secrets.sh, "$(abspath ${TF_DIR})")
 
 apply-globals: guard-setup ## Inject homelab global environment ConfigMaps
 	@echo "=== Injecting global configuration from environment variables ==="
@@ -204,6 +212,34 @@ deploy-vw-backup: guard-setup ## Deploy standalone Vaultwarden backup CronJob ma
 bundle: guard-setup ## Bundle the active codebase into a single markdown for AI agent consumption
 	@echo "=== Bundling codebase into a single markdown file ==="
 	$(call run_script,./scripts/workstation/bundle-codebase.sh)
+
+# Simple guard to fail fast with a clear error if the tfvars file is missing
+guard-tfvars:
+	@if [ ! -f "$(TF_VARS_FILE)" ]; then \
+		echo "🛑 ERROR: Var file not found at '$(TF_VARS_FILE)'!"; \
+		echo "   Ensure PROFILE is set correctly (e.g., make tf-plan PROFILE=local)."; \
+		exit 1; \
+	fi
+
+tf-init: guard-setup
+	$(call require_tools,terraform)
+	terraform -chdir="${TF_DIR}" init
+
+tf-plan: guard-setup guard-tfvars
+	$(call require_tools,terraform)
+	terraform -chdir=$(TF_DIR) plan -out=$(SECURE_TMP_DIR)/tfplan
+
+tf-apply: guard-setup
+	$(call require_tools,terraform)
+	terraform -chdir=$(TF_DIR) apply $(SECURE_TMP_DIR)/tfplan
+	@rm -f $(SECURE_TMP_DIR)/tfplan
+
+tf-deploy: guard-setup ## Run full Terraform workflow (init -> plan -> apply)
+	$(MAKE) --no-print-directory tf-init
+	$(MAKE) --no-print-directory tf-plan
+	$(MAKE) --no-print-directory tf-apply
+
+
 
 # ==============================================================================
 # 🧪 MODULE TESTS

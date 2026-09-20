@@ -6,8 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 # Define clean absolute paths for Terraform and manifest directories
-# TF_DIR="${1:-${TF_DIR:-${REPO_ROOT}/infrastructure/terraform}}"
-TF_DIR="${1:-${TF_DIR:-}}"
+TF_DIR="${1:-${TF_DIR:-${REPO_ROOT}/infrastructure/terraform}}"
 
 if [ ! -d "${TF_DIR}" ]; then
     echo "❌ ERROR: Terraform directory '${TF_DIR}' does not exist!" >&2
