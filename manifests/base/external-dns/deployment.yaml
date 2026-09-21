@@ -27,7 +27,12 @@ spec:
       containers:
         - name: external-dns
           image: desec/external-dns-desec-provider:v0.1.1
-          args:
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            args:
             - --source=ingress
             - --provider=desec
             - --domain-filter=$(DOMAIN)
