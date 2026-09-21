@@ -90,10 +90,10 @@ endef
 # ⚓ DYNAMIC TARGET DECLARATIONS (.PHONY & Double-Colon overrides)
 # =============================================================================
 # Safely appends this module's targets to the global build index.
-.PHONY: day0-bare-metal platform-core gitops-apps \
+.PHONY: day0-bare-metal platform-core bootstrap-gitops \
 		check-day0-lock write-day0-lock \
 		provision-nodes deploy-ha-dns sync-azure-secrets apply-globals \
-  		kustomize-argocd bootstrap-argocd \
+  		kustomize-external-dns kustomize-argocd bootstrap-argocd \
 		deploy-vaultwarden deploy-vw-backup \
 		tf-init tf-plan tf-apply tf-deploy \
 		bundle test-module-k3s clean-module-k3s
@@ -111,7 +111,7 @@ platform-core: test sync-azure-secrets apply-globals bootstrap-argocd ## [Day 1]
 	@echo "🚀 [Platform Core Complete] Secrets injected, global environments active, and GitOps controller live."
 
 # DAY 2: GitOps Applications (Delegates all standard deployments to Argo CD)
-gitops-apps: bootstrap-argocd ## [Day 2] Delegate all application deployments to Argo CD GitOps controller
+bootstrap-gitops: bootstrap-argocd ## [Day 2] Delegate all application deployments to Argo CD GitOps controller
 	@echo "=== Day 2: Declarative GitOps Sync ==="
 	@echo "Platform control handed off to Argo CD."
 	@echo "To apply app updates (Vaultwarden, backup CronJobs, etc.), simply commit changes to Git."
@@ -148,6 +148,10 @@ write-day0-lock: guard-setup
 # ==============================================================================
 # ⚙️ DETAILED OPERATIONAL TARGETS
 # ==============================================================================
+kustomize-external-dns: guard-setup ## Local dry-run compilation for external-dns
+	@echo "=== Compiling external-dns manifests ==="
+	$(call require_tools,kubectl)
+	kubectl kustomize manifests/base/external-dns/  | $(call safe_envsubst,manifests/base/globals/*.yaml manifests/base/external-dns/*.yaml)
 
 kustomize-argocd: guard-setup ## Compile Kustomize AST and substitute environment variables
 	@echo "=== Compiling and Verifying ArgoCD Kustomize build ==="

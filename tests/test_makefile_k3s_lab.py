@@ -68,6 +68,12 @@ class TestMakefileK3s(unittest.TestCase):
         (self.manifest_dir / "kustomization.yaml").write_text("resources:\n  - secret.yaml\n", encoding="utf-8")
         (self.manifest_dir / "secret.yaml").write_text("domain: ${DOMAIN}\n", encoding="utf-8")
 
+        # Copy required base manifests into the temporary test sandbox
+        ext_dns_dst = self.test_dir / "manifests/base/external-dns"
+        globals_dst = self.test_dir / "manifests/base/globals"
+
+        shutil.copytree(self.repo_root / "manifests/base/external-dns", ext_dns_dst, dirs_exist_ok=True)
+        shutil.copytree(self.repo_root / "manifests/base/globals", globals_dst, dirs_exist_ok=True)
 
     def tearDown(self):
         shutil.rmtree(self.test_dir)
@@ -451,6 +457,29 @@ class TestMakefileK3s(unittest.TestCase):
             init_pos < plan_pos < apply_pos,
             f"Execution order violation! Positions: init={init_pos}, plan={plan_pos}, apply={apply_pos}"
         )
+
+    @require_binaries("kubectl", "envsubst")
+    def test_kustomize_external_dns_target(self):
+        """Verify 'make kustomize-external-dns' executes the Makefile pipeline cleanly."""
+        (self.test_dir / ".setup_done").touch()   # mock setup done
+
+        self.env_file = self.inventory_dir / "test_kustomize_external_dns.env"
+        self.env_file.write_text("DOMAIN=samjam.dedyn.io\nVIP=192.168.1.53\nTXT_OWNER_ID=project-id", encoding="utf-8")
+
+        result = self._run_make(
+            profile_name="test_kustomize_external_dns",
+            target_name="kustomize-external-dns"
+        )
+
+        self.assertEqual(result.returncode, 0, f"make kustomize-external-dns failed: {result.stderr}")
+        self.assertIn("kind: Deployment", result.stdout)
+        self.assertIn("name: external-dns", result.stdout)
+        # Verify native Kubelet runtime expansion flags remain untouched
+        self.assertIn("--domain-filter=$(DOMAIN)", result.stdout)
+        self.assertIn("--txt-owner-id=$(TXT_OWNER_ID)", result.stdout)
+        # Verify safe_envsubst properly substituted homelab-globals
+        self.assertIn("DOMAIN: samjam.dedyn.io", result.stdout)
+        self.assertIn("TXT_OWNER_ID: project-id", result.stdout)
 
 if __name__ == "__main__":
     unittest.main()
