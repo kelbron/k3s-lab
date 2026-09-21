@@ -15,5 +15,5 @@ spec:
             solverName: desec
             config:
               apiKeySecretRef:
-                name: desec-token
+                name: desec-api-token
                 key: token

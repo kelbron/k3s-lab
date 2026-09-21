@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: external-dns
+  namespace: external-dns
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: external-dns
+  template:
+    metadata:
+      labels:
+        app: external-dns
+    spec:
+      serviceAccountName: external-dns
+      nodeSelector:
+        workload-type: infra
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+          effect: "NoSchedule"
+      containers:
+        - name: external-dns
+          image: desec/external-dns-desec-provider:v0.1.1
+          args:
+            - --source=ingress
+            - --provider=desec
+            - --domain-filter=$(DOMAIN)
+            - --registry=txt
+            - --txt-owner-id=$(TXT_OWNER_ID)
+            - --txt-prefix=external-dns-
+            - --log-level=info
+          envFrom:
+            - configMapRef:
+                name: homelab-globals
+          env:
+            - name: DESEC_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: desec-api-token
+                  key: token
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi

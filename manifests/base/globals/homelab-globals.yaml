@@ -6,6 +6,7 @@ metadata:
 data:
   DOMAIN: "${DOMAIN}"
   ACME_EMAIL: "${ACME_EMAIL}"
+  TXT_OWNER_ID: "${TXT_OWNER_ID}"     # e.g. k3s-lab or k3s-lab-sandbox
   VW_BACKUP_REMOTE_TYPE: "${VW_BACKUP_REMOTE_TYPE}"
   VW_BACKUP_LOCATION: "${VW_BACKUP_LOCATION}"
   VW_URL: "${VW_URL}"
